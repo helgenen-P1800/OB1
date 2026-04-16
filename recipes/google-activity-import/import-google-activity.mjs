@@ -210,7 +210,7 @@ function findMyActivityFiles(dirPath) {
       const entries = readdirSync(d, { withFileTypes: true });
       for (const e of entries) {
         const full = join(d, e.name);
-        if (e.isFile() && e.name === "MyActivity.json") {
+        if (e.isFile() && (e.name === "MyActivity.json" || e.name === "My Activity.json")) {
           results.push({ file: full, category: basename(d) });
         } else if (e.isDirectory() && !e.name.startsWith(".")) {
           walk(full, depth + 1);
