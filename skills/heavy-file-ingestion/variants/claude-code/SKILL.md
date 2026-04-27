@@ -21,13 +21,7 @@ Claude Code has the tools to convert files locally, so it should not waste conte
 
 1. Do not read the original heavyweight file directly into context if conversion is possible.
 1. Resolve the bundled converter relative to this skill directory: `scripts/convert_heavy_file.py`
-1. Run the converter first. Default command:
-
-```bash
-python scripts/convert_heavy_file.py /absolute/path/to/file.ext
-```
-
-1. If dependencies are missing, prefer:
+1. Run the converter first. Flat output is the default — outputs land next to the source file as `filename.md` and `filename.index.md`:
 
 ```bash
 uv run \
@@ -36,9 +30,25 @@ uv run \
   --with python-pptx \
   --with openpyxl \
   python scripts/convert_heavy_file.py /absolute/path/to/file.ext
+# → /absolute/path/to/filename.md, filename.index.md
 ```
 
-1. Read the generated `index.md` before reading any converted artifact.
+1. To send multiple files to a shared folder, add `--output-dir`:
+
+```bash
+uv run \
+  --with pdfplumber \
+  --with python-docx \
+  --with python-pptx \
+  --with openpyxl \
+  python scripts/convert_heavy_file.py /absolute/path/to/file.ext \
+    --output-dir /absolute/path/to/converted/
+# → converted/filename.md, converted/filename.index.md
+```
+
+1. Use `--no-flat` to get the legacy per-file subfolder (`<source>.ob1/`) instead.
+
+1. Read the generated `filename.index.md` before reading any converted artifact.
 2. Use the index to decide the cheapest next step:
    - `read_extracted_artifact`: read the markdown or CSV and continue
    - `install_dependency_and_retry`: install the missing deterministic dependency and rerun

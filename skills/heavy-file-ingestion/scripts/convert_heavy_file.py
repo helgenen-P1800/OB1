@@ -46,13 +46,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        help="Directory for extracted outputs. Defaults to <source>.ob1/",
+        help="Directory for extracted outputs. Defaults to the source file's parent directory.",
     )
     parser.add_argument(
         "--prefer",
         choices=["auto", "native", "markitdown"],
         default="auto",
         help="Preferred converter strategy for supported formats",
+    )
+    parser.add_argument(
+        "--flat",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Write outputs directly to --output-dir using the source filename as prefix "
+            "(default). Use --no-flat to create a per-file <source>.ob1/ subfolder instead."
+        ),
     )
     return parser.parse_args()
 
@@ -176,7 +185,7 @@ def build_index_markdown(result: ConversionResult) -> str:
     return "\n".join(lines) + "\n"
 
 
-def write_index_files(result: ConversionResult) -> None:
+def write_index_files(result: ConversionResult, stem: str | None = None) -> None:
     index_payload = {
         "source": str(result.source),
         "source_name": result.source.name,
@@ -190,8 +199,9 @@ def write_index_files(result: ConversionResult) -> None:
         "stats": result.stats,
     }
 
-    index_json = result.output_dir / "index.json"
-    index_md = result.output_dir / "index.md"
+    prefix = f"{stem}." if stem else ""
+    index_json = result.output_dir / f"{prefix}index.json"
+    index_md = result.output_dir / f"{prefix}index.md"
     write_text(index_json, json.dumps(index_payload, indent=2, sort_keys=True) + "\n")
     write_text(index_md, build_index_markdown(result))
 
@@ -224,10 +234,10 @@ def maybe_markitdown(source: Path, output_path: Path, prefer: str) -> str | None
     return None
 
 
-def convert_csv_like(source: Path, output_dir: Path, delimiter: str) -> ConversionResult:
+def convert_csv_like(source: Path, output_dir: Path, delimiter: str, stem: str | None = None) -> ConversionResult:
     result = ConversionResult(source=source, output_dir=output_dir, converter="native-csv")
-    normalized_path = output_dir / "table.csv"
-    summary_path = output_dir / "table.md"
+    normalized_path = output_dir / (f"{stem}.csv" if stem else "table.csv")
+    summary_path = output_dir / (f"{stem}.md" if stem else "table.md")
 
     rows: list[list[str]] = []
     with source.open("r", encoding="utf-8", errors="replace", newline="") as handle:
@@ -277,7 +287,7 @@ def convert_csv_like(source: Path, output_dir: Path, delimiter: str) -> Conversi
     return result
 
 
-def convert_xlsx(source: Path, output_dir: Path) -> ConversionResult:
+def convert_xlsx(source: Path, output_dir: Path, stem: str | None = None) -> ConversionResult:
     openpyxl = require_module("openpyxl", "openpyxl")
     result = ConversionResult(source=source, output_dir=output_dir, converter="native-openpyxl")
     workbook = openpyxl.load_workbook(source, read_only=True, data_only=True)
@@ -287,7 +297,8 @@ def convert_xlsx(source: Path, output_dir: Path) -> ConversionResult:
     for sheet in workbook.worksheets:
         sheet_count += 1
         slug = slugify(sheet.title)
-        csv_path = output_dir / f"{sheet_count:02d}-{slug}.csv"
+        csv_name = f"{stem}-{sheet_count:02d}-{slug}.csv" if stem else f"{sheet_count:02d}-{slug}.csv"
+        csv_path = output_dir / csv_name
 
         row_count = 0
         max_columns = 0
@@ -320,7 +331,7 @@ def convert_xlsx(source: Path, output_dir: Path) -> ConversionResult:
             Artifact(path=str(csv_path), kind="csv", description=f"Sheet {sheet_count}: {sheet.title}")
         )
 
-    manifest_path = output_dir / "workbook.md"
+    manifest_path = output_dir / (f"{stem}.md" if stem else "workbook.md")
     write_text(manifest_path, "\n".join(manifest_lines))
     result.artifacts.append(
         Artifact(path=str(manifest_path), kind="markdown", description="Workbook manifest and sheet preview")
@@ -341,11 +352,11 @@ def extract_shape_text(shape, collector: list[str]) -> None:
             extract_shape_text(child, collector)
 
 
-def convert_pptx(source: Path, output_dir: Path) -> ConversionResult:
+def convert_pptx(source: Path, output_dir: Path, stem: str | None = None) -> ConversionResult:
     pptx = require_module("pptx", "python-pptx")
     presentation = pptx.Presentation(str(source))
     result = ConversionResult(source=source, output_dir=output_dir, converter="native-python-pptx")
-    markdown_path = output_dir / "presentation.md"
+    markdown_path = output_dir / (f"{stem}.md" if stem else "presentation.md")
 
     lines = [f"# Presentation: {source.name}", ""]
     titled_slides = 0
@@ -400,8 +411,8 @@ def convert_pptx(source: Path, output_dir: Path) -> ConversionResult:
     return result
 
 
-def convert_docx(source: Path, output_dir: Path, prefer: str) -> ConversionResult:
-    markdown_path = output_dir / "document.md"
+def convert_docx(source: Path, output_dir: Path, prefer: str, stem: str | None = None) -> ConversionResult:
+    markdown_path = output_dir / (f"{stem}.md" if stem else "document.md")
     markitdown_used = maybe_markitdown(source, markdown_path, prefer)
     if markitdown_used:
         result = ConversionResult(source=source, output_dir=output_dir, converter=markitdown_used)
@@ -471,8 +482,8 @@ def convert_docx(source: Path, output_dir: Path, prefer: str) -> ConversionResul
     return result
 
 
-def convert_pdf(source: Path, output_dir: Path, prefer: str) -> ConversionResult:
-    markdown_path = output_dir / "document.md"
+def convert_pdf(source: Path, output_dir: Path, prefer: str, stem: str | None = None) -> ConversionResult:
+    markdown_path = output_dir / (f"{stem}.md" if stem else "document.md")
     markitdown_used = maybe_markitdown(source, markdown_path, prefer)
     if markitdown_used:
         result = ConversionResult(source=source, output_dir=output_dir, converter=markitdown_used)
@@ -524,10 +535,15 @@ def convert_pdf(source: Path, output_dir: Path, prefer: str) -> ConversionResult
     return result
 
 
-def convert_text_file(source: Path, output_dir: Path) -> ConversionResult:
+def convert_text_file(source: Path, output_dir: Path, stem: str | None = None) -> ConversionResult:
     result = ConversionResult(source=source, output_dir=output_dir, converter="native-text")
     text = source.read_text(encoding="utf-8", errors="replace")
-    copied_path = output_dir / ("document.md" if source.suffix.lower() != ".md" else source.name)
+    if stem:
+        copied_path = output_dir / f"{stem}.md"
+    elif source.suffix.lower() == ".md":
+        copied_path = output_dir / source.name
+    else:
+        copied_path = output_dir / "document.md"
 
     if source.suffix.lower() == ".md":
         shutil.copyfile(source, copied_path)
@@ -541,22 +557,22 @@ def convert_text_file(source: Path, output_dir: Path) -> ConversionResult:
     return result
 
 
-def handle_conversion(source: Path, output_dir: Path, prefer: str) -> ConversionResult:
+def handle_conversion(source: Path, output_dir: Path, prefer: str, stem: str | None = None) -> ConversionResult:
     suffix = source.suffix.lower()
     if suffix == ".csv":
-        return convert_csv_like(source, output_dir, delimiter=",")
+        return convert_csv_like(source, output_dir, delimiter=",", stem=stem)
     if suffix == ".tsv":
-        return convert_csv_like(source, output_dir, delimiter="\t")
+        return convert_csv_like(source, output_dir, delimiter="\t", stem=stem)
     if suffix == ".xlsx":
-        return convert_xlsx(source, output_dir)
+        return convert_xlsx(source, output_dir, stem=stem)
     if suffix == ".pptx":
-        return convert_pptx(source, output_dir)
+        return convert_pptx(source, output_dir, stem=stem)
     if suffix == ".docx":
-        return convert_docx(source, output_dir, prefer)
+        return convert_docx(source, output_dir, prefer, stem=stem)
     if suffix == ".pdf":
-        return convert_pdf(source, output_dir, prefer)
+        return convert_pdf(source, output_dir, prefer, stem=stem)
     if suffix in {".txt", ".md"}:
-        return convert_text_file(source, output_dir)
+        return convert_text_file(source, output_dir, stem=stem)
 
     result = ConversionResult(source=source, output_dir=output_dir, converter="unsupported")
     result.warnings.append(f"Unsupported file type: {suffix or 'unknown'}")
@@ -571,15 +587,24 @@ def main() -> int:
         print(f"Source file not found: {source}", file=sys.stderr)
         return 1
 
-    output_dir = (
-        args.output_dir.expanduser().resolve()
-        if args.output_dir
-        else source.parent / f"{source.name}.ob1"
-    )
+    if args.flat:
+        stem = source.stem
+        output_dir = (
+            args.output_dir.expanduser().resolve()
+            if args.output_dir
+            else source.parent
+        )
+    else:
+        stem = None
+        output_dir = (
+            args.output_dir.expanduser().resolve()
+            if args.output_dir
+            else source.parent / f"{source.name}.ob1"
+        )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        result = handle_conversion(source, output_dir, args.prefer)
+        result = handle_conversion(source, output_dir, args.prefer, stem=stem)
     except RuntimeError as exc:
         result = ConversionResult(source=source, output_dir=output_dir, converter="failed")
         result.warnings.append(str(exc))
@@ -591,7 +616,7 @@ def main() -> int:
 
     result.stats.setdefault("source_extension", source.suffix.lower() or "none")
     result.stats.setdefault("source_size_bytes", source.stat().st_size)
-    write_index_files(result)
+    write_index_files(result, stem=stem)
 
     print(json.dumps(
         {
