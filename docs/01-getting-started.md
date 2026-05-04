@@ -298,7 +298,7 @@ Copy the output — it'll look something like `a3f8b2c1d4e5...` (64 characters).
 
 ![Step 6](https://img.shields.io/badge/Step_6-Deploy_the_MCP_Server-1E88E5?style=for-the-badge)
 
-One Edge Function. Four MCP tools: semantic search, browse recent thoughts, stats, and capture. This gives any MCP-connected AI the ability to read and write to your brain.
+One Edge Function. Four core MCP tools: semantic search, browse recent thoughts, stats, and capture. It also exposes read-only `search` and `fetch` aliases for ChatGPT compatibility. Full-MCP-capable AI clients can read and write to your brain; restricted ChatGPT sessions can still use the standard read-only search/fetch path.
 
 > [!WARNING]
 > **Tried this before and starting over?** If you have a `supabase/` folder in your home directory from a previous attempt, delete it first — it will silently hijack your setup. Run `rm -rf ~/supabase` (Mac/Linux) or `Remove-Item -Recurse ~\supabase` (Windows) to clean it out.
@@ -356,15 +356,16 @@ Follow the prompts — it may ask for your Mac password. Once it finishes, close
 
 **Without Homebrew:**
 
-```bash
-npm install -g supabase
-```
+`npm install -g supabase` is not supported. If you want a global `supabase` command, install the standalone CLI from the [official Supabase CLI guide](https://supabase.com/docs/guides/local-development/cli/getting-started). Otherwise, run every command below with `npx supabase ...`.
 
 Verify it worked:
 
 ```bash
 supabase --version
 ```
+
+> [!NOTE]
+> If you're using `npx` instead of a global `supabase` binary, run `npx supabase --version` here and prefix the rest of the commands in this section the same way.
 
 ![6.3](https://img.shields.io/badge/6.3-Log_In-555?style=for-the-badge&labelColor=1E88E5)
 
@@ -413,15 +414,18 @@ supabase secrets set OPENROUTER_API_KEY=your-openrouter-key-here
 
 > [!NOTE]
 > `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are automatically available inside Edge Functions — you don't need to set them.
+>
+> Optional: if you have an Open Brain dashboard or another stable page for viewing individual thoughts, set `OPEN_BRAIN_CITATION_BASE_URL` to that base URL. ChatGPT's `search`/`fetch` compatibility tools use it when returning citation URLs.
 
 <!-- -->
 
 > [!CAUTION]
 > Make sure the access key you set here **exactly matches** what you saved in your credential tracker. If they don't match, you'll get 401 errors when connecting your AI.
-
+>
 > **If you ever rotate your OpenRouter key:** you must re-run the `supabase secrets set` command above with the new key, AND update any local `.env` files that reference it. The edge function reads from Supabase secrets at runtime — updating the key on openrouter.ai alone won't propagate here. See the [FAQ on key rotation](03-faq.md#api-key-rotation) for the full checklist.
 
 ### Create the Function
+
 ![6.6](https://img.shields.io/badge/6.6-Download_the_Server_Files-555?style=for-the-badge&labelColor=1E88E5)
 
 Three commands, run them one at a time in order:
@@ -592,6 +596,8 @@ supabase secrets set OPENROUTER_API_KEY=your-openrouter-key-here
 
 > [!NOTE]
 > `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are automatically available inside Edge Functions — you don't need to set them.
+>
+> Optional: if you have an Open Brain dashboard or another stable page for viewing individual thoughts, set `OPEN_BRAIN_CITATION_BASE_URL` to that base URL. ChatGPT's `search`/`fetch` compatibility tools use it when returning citation URLs.
 
 <!-- -->
 
@@ -680,7 +686,7 @@ Pick your AI client below:
 <summary>🤖 <strong>7.1 — Claude Desktop</strong></summary>
 
 > [!NOTE]
-> No JSON config files. No Node.js. No terminal. This is the simplest connection method.
+> These steps are for Anthropic's official Claude Desktop app on macOS and Windows. Linux/community ports vary and aren't officially covered by this Connectors UI flow. No JSON config files. No Node.js. No terminal. This is the simplest connection method.
 
 1. Open Claude Desktop → **Settings** → **Connectors**
 2. Click **Add custom connector**
@@ -690,27 +696,6 @@ Pick your AI client below:
 
 That's it. Start a new conversation, and Claude will have access to your Open Brain tools. You can enable or disable it per conversation via the "+" button → Connectors.
 
-> [!TIP]
-> **Prefer JSON config?** If you'd rather use `claude_desktop_config.json` instead of the Connectors UI, use `supergateway` (not `mcp-remote` — see note below):
->
-> ```json
-> {
->   "mcpServers": {
->     "open-brain": {
->       "command": "npx",
->       "args": [
->         "-y",
->         "supergateway",
->         "--streamableHttp",
->         "https://YOUR_PROJECT_REF.supabase.co/functions/v1/open-brain-mcp?key=your-access-key-from-step-5"
->       ]
->     }
->   }
-> }
-> ```
->
-> ⚠️ **Do not use `mcp-remote` for Claude Desktop.** It performs OAuth discovery against the Supabase domain, which returns a 404 that causes the connection to fail before Claude Desktop's short startup timeout. `supergateway --streamableHttp` connects directly with no OAuth handshake. (`mcp-remote` works fine in Codex because its `startup_timeout_sec = 30` gives enough time for the OAuth fallback.)
-
 </details>
 
 <details>
@@ -718,6 +703,8 @@ That's it. Start a new conversation, and Claude will have access to your Open Br
 
 > [!WARNING]
 > Requires a paid ChatGPT plan (Plus, Pro, Business, Enterprise, or Edu). Works on the web at [chatgpt.com](https://chatgpt.com) only — not available on mobile.
+>
+> ChatGPT's custom MCP support is still beta, plan-sensitive, and sometimes model-sensitive. As of May 2026, OpenAI's docs list Developer Mode for Plus, Pro, Business, Enterprise, and Edu, while workspace app publishing and action controls are documented mainly for Business, Enterprise, and Edu. In practice, some Pro model variants expose fewer custom tools than thinking models.
 
 **Enable Developer Mode (one-time setup):**
 
@@ -739,6 +726,8 @@ That's it. Start a new conversation, and Claude will have access to your Open Br
 
 > [!TIP]
 > ChatGPT is less intuitive than Claude at picking the right MCP tool automatically. If it doesn't use your brain on its own, be explicit: "Use the Open Brain search_thoughts tool to find my notes about project planning." After it gets the pattern once or twice in a conversation, it usually picks up the habit.
+>
+> If ChatGPT says an Open Brain tool is unavailable and your Supabase Edge Function logs show zero requests, the connector did not reach your server. Refresh or recreate the ChatGPT app, start a fresh chat, select the Open Brain app in Developer Mode, and try a thinking model. On restricted Pro sessions, expect read tools, especially `search` and `fetch`, to be more reliable than the write tool (`capture_thought`).
 
 </details>
 
@@ -830,7 +819,7 @@ Every MCP client handles remote servers slightly differently. The server accepts
 
 </details>
 
-✅ **Done when:** You can start a conversation in your AI client and it has access to Open Brain tools (search_thoughts, list_thoughts, thought_stats, capture_thought).
+✅ **Done when:** You can start a conversation in your AI client and it has access to Open Brain tools (`search_thoughts`, `list_thoughts`, `thought_stats`, `capture_thought`). ChatGPT may also show `search` and `fetch` compatibility tools.
 
 ---
 
@@ -880,19 +869,19 @@ Your AI should retrieve the thought you just saved.
 
 **❌ Claude Desktop tools don't appear**
 
-Make sure you added the connector in Settings → Connectors (not by editing the JSON config file). Verify the connector is enabled for your conversation — click the "+" button at the bottom of the chat, then Connectors, and check that Open Brain is toggled on. If the connector was added but tools still don't show, try removing and re-adding it with the same URL.
+On the official macOS/Windows Claude Desktop app, make sure you added the connector in Settings → Connectors. Verify the connector is enabled for your conversation — click the "+" button at the bottom of the chat, then Connectors, and check that Open Brain is toggled on. If the connector was added but tools still don't show, try removing and re-adding it with the same URL. If you're using a Linux/community port, its connector behavior can differ and isn't covered by this guide.
 
 **❌ ChatGPT doesn't use the Open Brain tools**
 
 First, confirm Developer Mode is enabled (Settings → Apps & Connectors → Advanced settings). Without it, ChatGPT only exposes limited MCP functionality that won't cover Open Brain's full toolset. Next, check that the connector is active for your current conversation — look for it in the tools/apps panel. If it's connected but ChatGPT ignores it, be direct: "Use the Open Brain search_thoughts tool to search for [topic]." ChatGPT often needs explicit tool references the first few times before it starts picking them up automatically.
 
+**❌ ChatGPT says an Open Brain tool is unavailable**
+
+Check Supabase dashboard → Edge Functions → `open-brain-mcp` → Logs. If no request appears when ChatGPT fails, your server is not the problem. ChatGPT did not expose that tool to the current chat. Redeploy the current MCP server, refresh or recreate the ChatGPT app so it pulls updated tool metadata, start a fresh chat, and try a thinking model. On Pro, the read-only `search`/`fetch` compatibility tools may work where `capture_thought` is hidden or blocked because full MCP/write access is plan-dependent.
+
 **❌ "Permission denied for table thoughts"**
 
 Your `service_role` doesn't have table-level permissions. This happens on newer Supabase projects where CRUD grants are no longer automatic. Go back to Step 2.5 and run the `GRANT` SQL, then retry.
-
-**❌ Claude Desktop JSON config: "Couldn't reach the MCP server"**
-
-If you're using `claude_desktop_config.json` with `mcp-remote`, switch to `supergateway --streamableHttp` instead. `mcp-remote` performs OAuth discovery against the Supabase domain (`/.well-known/oauth-authorization-server`), which returns a 404 that stalls the connection past Claude Desktop's startup timeout. `supergateway` connects directly with no OAuth handshake. See Step 7.1 for the config. (This does not affect Codex, which has a configurable `startup_timeout_sec` that gives `mcp-remote` enough time to fall back.)
 
 **❌ Getting 401 errors**
 
